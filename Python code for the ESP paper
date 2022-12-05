@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr  5 16:28:51 2022
+
+@author: Yudi Chen
+"""
+
+import pandas as pd
+import os
+import re
+
+from matplotlib import rcParams
+params={'font.family':'serif',
+        'font.serif':'Times New Roman',
+        'font.style':'normal',
+        'font.weight':'normal',
+        'font.size':16
+        }
+rcParams.update(params)
+
+moves = ['m'+str(x) for x in range(1, 8)]
+
+def text_preprocess(text):
+    '''
+    remove the 's' in the labels
+    Parameters
+    ----------
+    text : str
+
+    Returns
+    -------
+    text : str
+
+    '''
+    s_lst = ['_S' + str(x) for x in range(1, 5)]
+    text = text.replace('[', '')
+    text = text.replace(']', '')
+    for s in s_lst:
+        text = text.replace(s, '')
+                
+    return text
+        
+
+# read text files
+path = 'C:\\Users\\Yudi Chen\\Desktop\\summer\\move\\coding_all_sampled\\'
+files = os.listdir(path)
+texts = pd.DataFrame(index=files, columns=['m' + str(x) for x in range(1, 8)])
+for file in files:
+    with open(path+file, 'r', encoding="utf8") as f:
+        file_text = f.read()
+    file_text = text_preprocess(file_text)
+    file_text = file_text.lower()
+    for m in moves:
+        m_start = m + '_start'
+        m_end = m + '_end'
+        pos_start = [x.end() for x in re.finditer(m_start, file_text)]
+        pos_end = [x.start() for x in re.finditer(m_end, file_text)]
+        if len(pos_start) == len(pos_end):
+            if len(pos_start) > 0:
+                m_text = ''
+                for x_start, x_end in zip(pos_start, pos_end):
+                     m_text =  m_text + ' '  + file_text[x_start:x_end].strip()
+                     m_text = re.sub(r"[,.;@#?!&$]", " ", m_text)
+                texts.loc[file, m] = m_text            
+        else:
+            print('Opps! there are some labeling errors in file {} for move {}'.format(file, m))
+                
+texts.fillna(' ', inplace=True)
+
+
+def occurence_count(sentence, sub):
+    
+    return sentence.count(sub + ' ')
+
+
+pframes_raw = pd.read_csv('05-Freq-phraseFrames.csv')
+pframes_raw = pframes_raw.dropna(axis=0, how='all').reset_index()
+pframes = pframes_raw.dropna(axis=0, how='any')
+
+pframe_count = pd.DataFrame(index=pframes['n-gram'], columns=moves)
+all_ngram_count = pd.DataFrame(columns=moves)
+for ii in range(pframes.shape[0]):
+    pframe = pframes['n-gram'].iloc[ii] 
+    print(ii, pframe)
+    ngram_start_idx = pframes.index[ii] + 1
+    if ii == pframes.shape[0] - 1:
+        ngrams = pframes_raw.iloc[ngram_start_idx:]['n-gram']
+    else:
+        ngram_end_idx = pframes.index[ii+1]
+        ngrams = pframes_raw.iloc[ngram_start_idx:ngram_end_idx]['n-gram']
+    ngram_count = pd.DataFrame(index=ngrams, columns=moves)
+    for ngram in ngrams:
+        for m in moves:
+            ngram_m_count = texts[m].apply(occurence_count, sub=ngram) 
+            ngram_count.loc[ngram, m] = ngram_m_count.sum()
+    pframe_count.loc[pframe, :] = ngram_count.sum(axis=0).values
+    ngram_count['pframe'] = pframe
+    all_ngram_count = all_ngram_count.append(ngram_count)
+pframe_count['frequency'] = pframes['frequency'].values
+pframe_count['type'] = pframes['type'].values
+all_ngram_count['frequency'] = all_ngram_count.iloc[:, :7].sum(axis=1).values
+
+pframe_count.to_csv('pframes.csv')
+all_ngram_count.to_csv('ngrams.csv')
+        
+texts.to_csv('all_texts.csv')
+
